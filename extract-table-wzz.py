@@ -1,9 +1,9 @@
 '''
-@:parameter:--dir
-            --img
-            --save
-            --show
-            --save_path
+@:parameter:--dir       "图片文件夹"
+            --img       "图片名"
+            --save      "是否保存"
+            --show      "是否显示"
+            --save_path "保存路径"
 '''
 
 
@@ -274,7 +274,11 @@ def get_dots(x, row, col):
         for val in range(row[key]):
             #         print(key)
             yy = key
-            xx = [val[0] for val in x if yy - 5 <= val[1] <= yy + 5]
+            # xx = [val[0] for val in x if yy - 5 <= val[1] <= yy + 5] # py3 ver
+            xx = []
+            for val in x:
+                if abs(yy - val[1]) <= 5:
+                    xx.append(val[0])
             result_row_ = [[x, yy] for x in xx]
             result_row_.reverse()
         # print(result)
@@ -283,7 +287,11 @@ def get_dots(x, row, col):
     for key in col:
         for val in range(col[key]):
             xx = key
-            yy = [val[1] for val in x if xx - 5 <= val[0] <= xx + 5]
+            yy = []
+            # yy = [val[1] for val in x if xx - 5 <= val[0] <= xx + 5]
+            for val in x:
+                if abs(val[0] - xx) <= 5:
+                    yy.append(val[1])
             result_col_ = [[xx, y] for y in yy]
             result_col_.reverse()
         results_col_[key] = result_col_
@@ -348,8 +356,6 @@ def get_LSD_result(img):
                 right_edge = max(x1, x2)
             max_length = max(max_length, abs(x1 - x2))
 
-    v_lines = []
-    h_lines = []
 
     return vertical_lines, horizontal_lines
 
@@ -363,14 +369,16 @@ def draw_line(img, lines):
 def get_bbox_result(img, binary):
     bboxes = []
     height, width = binary.shape
+    LSD = cv2.createLineSegmentDetector(0)
+    lines = LSD.detect(binary)[0]
     _, contours, hierarchy = cv2.findContours(binary, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     for c in contours:
         x, y, w, h = cv2.boundingRect(c)
         bboxes.append([x, y, w, h])
-        if height * width / 10000 < w * h < height * width / 2 and h >= height / 30 and w >= width /30:
-            result = cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 1)
-            result = cv2.putText(result, 'x:' + str(x) + ' y:' + str(y), (x, y + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 0, 255), 1)
-    return result, bboxes
+        if height * width / 10000 < w * h < height * width / 2:
+            img = cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 1)
+            img = cv2.putText(img, 'x:' + str(x) + ' y:' + str(y), (x, y + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 0, 255), 1)
+    return img, bboxes, lines
 
 def main(dir, img_p, save_path, save, show):
 
@@ -386,18 +394,22 @@ def main(dir, img_p, save_path, save, show):
     img1 = process_single_image(img_path=img_path, show=False)
     img2 = get_merge(img_path)
     result = get_or(img1, img2)
-    result, bboxs = get_bbox_result(img, result)
+    result, bboxs, lines = get_bbox_result(img, result)
     if save:
         if save_path == None:
             save_path = dir
         cv2.imwrite(save_path + "/" + img_p.split(".")[0] + "_result." + img_p.split(".")[-1],
                     result)
         b_box_file = open(save_path + "/" + "bbox.txt", "w+")
+        line_file = open(save_path + "/" + "lines.txt", "w+")
         for bbox in bboxs:
             x, y, w, h = bbox
             b_box_file.write(str(x) + " " + str(y) + " "
                              + str(w) + " " + str(h) + "\n")
-        b_box_file.close()
+        for line in lines:
+            x1, y1, x2, y2 = [str(int(a)) for a in line[0]]
+            line_file.write(x1 + " " + y1 + " " + x2 + " " +
+                            y2 + "\n")
     if show:
         cv2.imshow("result", result)
         cv2.waitKey(0)
