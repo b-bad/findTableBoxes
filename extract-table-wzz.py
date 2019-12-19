@@ -15,7 +15,8 @@ import argparse
 
 
 def get_merge(path):
-
+    # 进行第一次框线提取，获取通过形态学变换的去除文字部分后的不完整二值化图像。
+    # 由于未知原因会导致框线二值化图像不完整，所以用下面的方法进行优化。
     img = cv2.imread(path)
     # 二值化
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -72,7 +73,7 @@ def get_merge(path):
 
 def process_single_image(img_path, show=True, save=False, scale=20, erode_iters=1, dilate_iters=2):
 
-    thresh = 0.6
+    thresh = 0.6  # 判断短线是否为框线的阈值
     img = cv2.imread(img_path)
     h, w, c = img.shape
     if h * w < 4000000:
@@ -86,22 +87,24 @@ def process_single_image(img_path, show=True, save=False, scale=20, erode_iters=
                                            show=show)
     bitwise_and = get_bit_wise(col=dilate_col, row=dilate_row, show=show)
     rois_list, rois = get_rec(bitwise_and)
-
+    # 获取表格各个交点
     row, col = get_total_row_cols(x_=rois_list)
     row, col = clean_dots(row, col)
     results_row, results_col = get_dots(x=rois_list, row=row, col=col)
+    # 行列分开后的各个点的坐标
     keys_col = results_col.keys()
     keys_row = results_row.keys()
     vertical_lines, horizontal_lines = get_LSD_result(img)
+    # 由LSD获取的横纵直线
 
-    for v in vertical_lines:
+    for v in vertical_lines:  # 遍历竖直线，线中点在两点间且长度大于阈值
         x1, y1, x2, y2, mid_x, mid_y, length = v
         y_up = min(y1, y2)
         y_low = max(y1, y2)
         y_pt_up = 0
         y_pt_low = img.shape[0] - 1
         x_pt = 0
-        flag_y_up = False  # 线在两点间
+        flag_y_up = False  # 线在两点间,若线在两点间，在该两点间生成一条线
         flag_y_low = False
         flag_x = False
         for key in keys_row:
@@ -120,37 +123,37 @@ def process_single_image(img_path, show=True, save=False, scale=20, erode_iters=
             dst = cv2.line(dst, (x_pt, y_pt_up), (x_pt, y_pt_low),
                            255, 2)
 
-        for h in horizontal_lines:
-            x1, y1, x2, y2, mid_x, mid_y, length = h
-            x_left = min(x1, x2)
-            x_right = max(x1, x2)
-            x_pt_left = 0
-            x_pt_right = img.shape[1] - 1
-            y_pt = 0
-            flag_y = False  # 线在两点间
-            flag_x_left = False
-            flag_x_right = False
-            for key in keys_col:
-                if key <= x_left and key >= x_pt_left:
-                    x_pt_left = key
-                    flag_x_left = True
-                if key >= x_right and key <= x_pt_right:
-                    x_pt_right = key
-                    flag_x_right = True
-            for key in keys_row:
-                if key - 20 < mid_y < key + 20:
-                    y_pt = key
-                    flag_y = True
-                    break
-            if flag_x_right and flag_x_left and flag_y and length >= (x_pt_right - x_pt_left) * thresh:
-                dst = cv2.line(dst, (x_pt_left, y_pt), (x_pt_right, y_pt),
-                               255, 2)
+    for h in horizontal_lines:  # 遍历水平线,若线在两点间，在该两点间生成一条线
+        x1, y1, x2, y2, mid_x, mid_y, length = h
+        x_left = min(x1, x2)
+        x_right = max(x1, x2)
+        x_pt_left = 0
+        x_pt_right = img.shape[1] - 1
+        y_pt = 0
+        flag_y = False  # 线在两点间
+        flag_x_left = False
+        flag_x_right = False
+        for key in keys_col:
+            if key <= x_left and key >= x_pt_left:
+                x_pt_left = key
+                flag_x_left = True
+            if key >= x_right and key <= x_pt_right:
+                x_pt_right = key
+                flag_x_right = True
+        for key in keys_row:
+            if key - 20 < mid_y < key + 20:
+                y_pt = key
+                flag_y = True
+                break
+        if flag_x_right and flag_x_left and flag_y and length >= (x_pt_right - x_pt_left) * thresh:
+            dst = cv2.line(dst, (x_pt_left, y_pt), (x_pt_right, y_pt),
+                           255, 2)
 
     # cv2.imshow("d", dst)
     # cv2.waitKey(0)
     return dst
 
-def get_or(img1, img2):
+def get_or(img1, img2):  # 获取两张图象合并
     img3 = cv2.bitwise_or(img1, img2)
     kernel = np.ones((3, 3), np.uint8)
     img3 = cv2.erode(img3, kernel, iterations=1)
@@ -177,7 +180,7 @@ def get_rec(img_):
 
 
 def get_total_row_cols(x_):
-
+    """输入点集 输出每个x，y坐标下的点数目{x: num...} {y: num...}"""
     row = {}
     col = {}
     num = 1
@@ -202,7 +205,7 @@ def get_total_row_cols(x_):
 
 
 def extract_lines(image, scale=20, erode_iters=1, dilate_iters=2, show=True):
-
+    """ 通过多一次膨胀，闭合表格，返回二值化的竖线图和横线图"""
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     binary = cv2.adaptiveThreshold(~gray, 255,
                                    cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
@@ -231,7 +234,7 @@ def extract_lines(image, scale=20, erode_iters=1, dilate_iters=2, show=True):
 
 
 def get_bit_wise(col, row, show=True):
-
+    """ 合并上述竖线图和横线图，获取闭合表格"""
     bitwise_and = cv2.bitwise_and(col, row)
     if show:
         cv2.imshow("bitwiseAnd Image", bitwise_and)
@@ -240,14 +243,14 @@ def get_bit_wise(col, row, show=True):
 
 
 def clean_dots(row, col, err=2):
-
+    """将接近的点结果合并"""
     d = row  # 输入的字典（横坐标：该行点数）
     d_keys = list(d.keys())
     for i in range(len(d_keys) - 1):
         if abs(d_keys[i + 1] - d_keys[i]) <= err:
             d[d_keys[i + 1]] = d[d_keys[i]] + d[d_keys[i + 1]]  # 两点总数合并
             del d[d_keys[i]]  # 删除其中一个
-    d2 = col
+    d2 = col  # 输入的字典（纵坐标：该列点数）
     d2_keys = list(d2.keys())
     for i in range(len(d2_keys) - 1):
         if abs(d2_keys[i + 1] - d2_keys[i]) <= err:
@@ -265,35 +268,38 @@ def clean_dots(row, col, err=2):
 
 
 def get_dots(x, row, col):
+    """ 输入点集、各行列点数
+        输出按行和列分组的点集
+        """
     results_col_ = {}
     results_row_ = {}
-    for key in row:
+    for key in row:  # 遍历每一个行坐标
         #     print(row[key])
         #     print("*"*50)
         #     print(key, row[key])
-        for val in range(row[key]):
+        #for val in range(row[key]):
             #         print(key)
-            yy = key
-            # xx = [val[0] for val in x if yy - 5 <= val[1] <= yy + 5] # py3 ver
-            xx = []
-            for val in x:
-                if abs(yy - val[1]) <= 5:
-                    xx.append(val[0])
-            result_row_ = [[x, yy] for x in xx]
-            result_row_.reverse()
+        yy = key
+        # xx = [val[0] for val in x if yy - 5 <= val[1] <= yy + 5] # py3 ver
+        xx = []
+        for val in x:
+            if abs(yy - val[1]) <= 5:
+                xx.append(val[0])
+        result_row_ = [[x, yy] for x in xx]
+        result_row_.reverse()
         # print(result)
         results_row_[key] = result_row_  # 原来是append
         # results_row_.reverse()
     for key in col:
-        for val in range(col[key]):
-            xx = key
-            yy = []
-            # yy = [val[1] for val in x if xx - 5 <= val[0] <= xx + 5]
-            for val in x:
-                if abs(val[0] - xx) <= 5:
-                    yy.append(val[1])
-            result_col_ = [[xx, y] for y in yy]
-            result_col_.reverse()
+        #for val in range(col[key]):
+        xx = key
+        yy = []
+        # yy = [val[1] for val in x if xx - 5 <= val[0] <= xx + 5]
+        for val in x:
+            if abs(val[0] - xx) <= 5:
+                yy.append(val[1])
+        result_col_ = [[xx, y] for y in yy]
+        result_col_.reverse()
         results_col_[key] = result_col_
 
     return results_row_, results_col_
@@ -310,8 +316,6 @@ def get_LSD_result(img):
 
     LSD = cv2.createLineSegmentDetector(0)
     lines = LSD.detect(binary)[0]
-
-    hough_lines = cv2.HoughLines(binary, 1.0, math.pi / 180, int(min(height, width) / 10))
 
     horizontal_lines = []
     vertical_lines = []
@@ -366,7 +370,7 @@ def draw_line(img, lines):
 
     return img
 
-def get_bbox_result(img, binary):
+def get_bbox_result(img, binary):  # 获取单元格及其坐标，并输出最终单元格和线段
     bboxes = []
     height, width = binary.shape
     LSD = cv2.createLineSegmentDetector(0)
@@ -393,7 +397,7 @@ def main(dir, img_p, save_path, save, show):
     img = cv2.imread(img_path)
     img1 = process_single_image(img_path=img_path, show=False)
     img2 = get_merge(img_path)
-    result = get_or(img1, img2)
+    result = get_or(img1, img2)  # 将去除文字区域的二值图像与由短线和点生成的二值图合并
     result, bboxs, lines = get_bbox_result(img, result)
     if save:
         if save_path == None:
